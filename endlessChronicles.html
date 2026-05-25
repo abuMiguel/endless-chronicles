@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Roguelike Endless</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="endlessChronicles.css">
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- Main Game Canvas -->
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+        <!-- Heads Up Display -->
+        <div id="hud" class="hidden">
+            <div class="pointer-events-auto bg-black/50 p-2 rounded border border-gray-700">
+                <div class="text-xl font-bold mb-1" id="player-name-display">Hero Lvl 1</div>
+                <div class="stat-bar-container">
+                    <div id="hp-bar-fill" class="stat-bar hp-bar"></div>
+                    <div id="hp-text" class="stat-text">100/100</div>
+                </div>
+                <div class="stat-bar-container" id="mana-container">
+                    <div id="mana-bar-fill" class="stat-bar mana-bar"></div>
+                    <div id="mana-text" class="stat-text">50/50</div>
+                </div>
+                <div id="ammo-display" class="hidden text-xs font-bold mt-1">[E] <span id="ammo-label">Arrows</span>: <span id="ammo-count">0</span></div>
+                <div id="equipment-display" class="mt-1 pt-1 border-t border-gray-700 text-xs hidden">
+                    <div>⛨ <span id="armor-display" style="color:#555">None</span></div>
+                    <div>⬤ <span id="ring-display" style="color:#555">None</span></div>
+                    <div>🛡 <span id="shield-display" style="color:#555">None</span></div>
+                </div>
+                <div class="stat-bar-container" style="height: 10px;">
+                    <div id="xp-bar-fill" class="stat-bar xp-bar" style="width: 0%"></div>
+                </div>
+                <div id="stats-display" class="mt-1 pt-1 border-t border-gray-700 text-xs text-gray-400 flex justify-between gap-1">
+                    <span title="Vitality (Max HP)">VIT <span id="stat-hp" class="text-white font-bold">-</span></span>
+                    <span title="Strength (Damage)">STR <span id="stat-dmg" class="text-white font-bold">-</span></span>
+                    <span title="Agility (Speed)">AGI <span id="stat-spd" class="text-white font-bold">-</span></span>
+                    <span id="stat-ability-label" title="Special Ability Power">PWR <span id="stat-ability" class="text-white font-bold">-</span></span>
+                </div>
+                <div class="text-xs text-right mt-1">Score: <span id="score-display">0</span></div>
+            </div>
+            
+            <div class="pointer-events-auto flex flex-col items-end gap-2">
+                <button id="menu-btn" class="bg-gray-800 text-white border border-gray-600 px-3 py-1 rounded hover:bg-gray-700 text-sm">Menu</button>
+                <div id="wave-display" class="bg-black/50 p-2 rounded text-right border border-gray-700">
+                    <div class="text-sm text-gray-300">Goal: Survive</div>
+                    <div class="font-bold text-accent-color">Level <span id="level-display">1</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Controls -->
+        <div id="mobile-controls" class="hidden pointer-events-auto">
+            <div class="d-pad-row">
+                <div class="control-btn" id="btn-up">▲</div>
+            </div>
+            <div class="d-pad-row">
+                <div class="control-btn" id="btn-left">◀</div>
+                <div class="control-btn" style="visibility: hidden;"></div>
+                <div class="control-btn" id="btn-right">▶</div>
+            </div>
+            <div class="d-pad-row">
+                <div class="control-btn" id="btn-down">▼</div>
+            </div>
+        </div>
+        <div class="control-btn hidden pointer-events-auto bg-red-900/50 border-red-500" id="action-btn">ATK</div>
+        <div class="control-btn hidden pointer-events-auto" id="ranged-btn">E</div>
+
+        <!-- Start/Main Menu Overlay -->
+        <div id="start-screen" class="overlay">
+            <div class="panel">
+                <h1 class="text-4xl font-bold mb-1 text-green-500">ENDLESS CHRONICLES</h1>
+                <p class="mb-3 text-gray-400">A real-time retro roguelike</p>
+
+                <div id="class-selection" class="flex flex-col gap-2">
+                    <h2 class="text-xl mb-1 border-b border-gray-600 pb-1">Choose Your Hero</h2>
+                    
+                    <div class="grid grid-cols-3 gap-2">
+                        <!-- Human -->
+                        <div class="bg-gray-800 p-2 rounded border border-gray-600 cursor-pointer hover:border-green-500 class-card" data-class="human">
+                            <h3 class="text-base text-green-400 mb-1">Human Knight</h3>
+                            <canvas class="class-preview-canvas mx-auto block mb-1" data-class="human" width="60" height="60" style="image-rendering:pixelated;"></canvas>
+                            <p class="text-xs text-gray-300 mb-1">Balanced fighter. Good defense, steady damage.</p>
+                            <ul class="text-xs text-left text-gray-400 list-disc list-inside">
+                                <li>High HP</li>
+                                <li>Melee + Arrows</li>
+                                <li>Can Block</li>
+                            </ul>
+                        </div>
+                        <!-- Wizard -->
+                        <div class="bg-gray-800 p-2 rounded border border-gray-600 cursor-pointer hover:border-purple-500 class-card" data-class="wizard">
+                            <h3 class="text-base text-purple-400 mb-1">Arcane Wizard</h3>
+                            <canvas class="class-preview-canvas mx-auto block mb-1" data-class="wizard" width="60" height="60" style="image-rendering:pixelated;"></canvas>
+                            <p class="text-xs text-gray-300 mb-1">Fragile but devastating ranged magic user.</p>
+                            <ul class="text-xs text-left text-gray-400 list-disc list-inside">
+                                <li>Low HP, High Mana</li>
+                                <li>Ranged Fireballs</li>
+                                <li>Area Damage</li>
+                            </ul>
+                        </div>
+                        <!-- Beast -->
+                        <div class="bg-gray-800 p-2 rounded border border-gray-600 cursor-pointer hover:border-orange-500 class-card" data-class="beast">
+                            <h3 class="text-base text-orange-400 mb-1">Feral Beast</h3>
+                            <canvas class="class-preview-canvas mx-auto block mb-1" data-class="beast" width="60" height="60" style="image-rendering:pixelated;"></canvas>
+                            <p class="text-xs text-gray-300 mb-1">Fast, aggressive, high damage melee brawler.</p>
+                            <ul class="text-xs text-left text-gray-400 list-disc list-inside">
+                                <li>Medium HP</li>
+                                <li>Fast Movement/Attack</li>
+                                <li>Lifesteal chance</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="mt-2">
+                        <label class="mr-2">Difficulty:</label>
+                        <select id="difficulty-select" class="bg-gray-700 text-white p-1 rounded">
+                            <option value="easy">Easy (More HP, Slower Foes)</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="hard">Hard (Less HP, Faster Foes)</option>
+                        </select>
+                    </div>
+
+                    <div class="flex justify-center gap-4 mt-2">
+                        <button id="start-new-btn" class="btn btn-danger hidden">Start Journey</button>
+                        <button id="load-save-btn" class="btn hidden border-blue-500 text-blue-400">Load Save</button>
+                    </div>
+                </div>
+                
+                <div class="mt-2">
+                     <button id="show-bestiary-btn" class="text-sm text-gray-400 hover:text-white underline">View Bestiary / Manual</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Level Up Overlay -->
+        <div id="level-up-screen" class="overlay hidden">
+            <div class="panel">
+                <h1 class="text-4xl font-bold mb-4 text-yellow-400 animate-pulse">LEVEL UP!</h1>
+                <p class="text-xl mb-6">You reached level <span id="new-level-display"></span></p>
+                <h2 class="text-2xl mb-4">Choose an Attribute to Improve:</h2>
+                
+                <div class="flex flex-col gap-3">
+                    <button class="btn upgrade-btn" data-stat="maxHp">
+                        + Vitality (Increase Max HP)
+                    </button>
+                    <button class="btn upgrade-btn" data-stat="damage">
+                        + Strength (Increase Damage)
+                    </button>
+                    <button class="btn upgrade-btn" data-stat="speed">
+                        + Agility (Increase Speed)
+                    </button>
+                    <button class="btn upgrade-btn" id="ability-upgrade-btn" data-stat="ability">
+                        + Special Ability Power
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- In-Game Menu Overlay -->
+        <div id="pause-menu" class="overlay hidden">
+            <div class="panel w-96">
+                <h2 class="text-3xl font-bold mb-6">PAUSED</h2>
+                <div class="flex flex-col gap-4">
+                    <button id="resume-btn" class="btn">Resume</button>
+                    <button id="save-btn" class="btn border-blue-500 text-blue-400">Save Progress</button>
+                    <button id="menu-bestiary-btn" class="btn">Manual & Bestiary</button>
+                    <button id="quit-btn" class="btn btn-danger">Quit to Title</button>
+                </div>
+                <div id="save-msg" class="mt-4 text-sm text-green-400 h-4"></div>
+            </div>
+        </div>
+
+        <!-- Game Over Overlay -->
+        <div id="game-over-screen" class="overlay hidden">
+            <div class="panel">
+                <h1 class="text-5xl font-bold mb-2 text-red-600">YOU DIED</h1>
+                <p class="text-xl mb-4 text-gray-300">The journey ends here.</p>
+                <div class="bg-gray-800 p-4 rounded mb-6 text-left">
+                    <p>Level Reached: <span id="death-level" class="font-bold text-white"></span></p>
+                    <p>Score: <span id="death-score" class="font-bold text-yellow-400"></span></p>
+                    <p>Enemies Slain: <span id="death-kills" class="font-bold text-white"></span></p>
+                    <p class="mt-1 text-red-400">Slain by: <span id="death-killer" class="font-bold text-red-300"></span></p>
+                </div>
+                <button id="restart-btn" class="btn btn-danger text-xl px-8 py-3">Try Again</button>
+            </div>
+        </div>
+
+        <!-- Bestiary/Manual Overlay -->
+        <div id="bestiary-screen" class="overlay hidden">
+            <div class="panel" style="max-width: 800px; width: 90%;">
+                <h2 class="text-3xl font-bold mb-4 border-b border-gray-600 pb-2">Manual & Bestiary</h2>
+                
+                <div class="text-left mb-6">
+                    <h3 class="text-xl text-accent-color mb-2">Controls</h3>
+                    <p><strong>Desktop:</strong> W,A,S,D or Arrow Keys to move. <strong>SPACE</strong> = Melee. <strong>E</strong> = Ranged attack.</p>
+                    <p><strong>Mobile:</strong> D-Pad to move. <strong>ATK</strong> = Melee, <strong>E</strong> button = Ranged.</p>
+                    <p class="mt-1 text-sm text-yellow-400">Knight: arrows (limited). Beast: rocks (limited). Wizard: fireball (costs mana). Pick up ammo from the ground!</p>
+                    <p class="mt-2 text-sm text-gray-400">Your character automatically attacks enemies that are very close, but manual attacking deals more damage or uses abilities.</p>
+                </div>
+
+                <div class="text-left">
+                    <h3 class="text-xl text-red-400 mb-2">Known Monsters</h3>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        <table id="bestiary-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Speed</th>
+                                    <th>Strength</th>
+                                    <th>Tier</th>
+                                    <th>Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bestiary-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <button id="close-bestiary-btn" class="btn">Close</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module" src="endlessChronicles.js"></script>
+</body>
+</html>
