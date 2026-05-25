@@ -10,10 +10,13 @@ import { TOWNS, CHEST_SPAWN_DATA, DEATH_QUOTES, ARMOR_ITEMS, RING_ITEMS, SHIELD_
 import {
     renderTerrain, pruneDistantChunks, clearChunkCache,
     hasTowerAtTile, hasWildChestAtTile,
+    hasShrineAtTile, hasCampAtTile, hasWildNPCAtTile,
 } from './chunks.js';
-import { Player, Classes, NPC, ArcherTower } from './entities.js';
+import { Player, Classes, NPC, ArcherTower, Shrine, Camp, WildNPC, WILD_NPC_PRESETS } from './entities.js';
 import { spawnManager, questSystem, deleteSaveGame } from './systems.js';
 import { achievements } from './achievements.js';
+import { worldPersist } from './worldPersist.js';
+import { music } from './audio.js';
 import {
     updateHUD, updateQuestTracker, renderMinimap, checkTownProximity,
     updateBiomeDisplay, resetBiomeDisplay, resetTownTracking, showNPCDialogue,
@@ -51,8 +54,13 @@ export function startGame(className, loadedData=null) {
 
     S.enemies.length=0; S.projectiles.length=0; S.particles.length=0;
     S.items.length=0; S.floatTexts.length=0;
-    S.chests = CHEST_SPAWN_DATA.map(pos=>({x:pos.x,y:pos.y,opened:false,loot:pos.loot}));
+    S.chests = CHEST_SPAWN_DATA.map((pos, i) => {
+        const key = `prechest_${i}`;
+        return { x: pos.x, y: pos.y, opened: worldPersist.isChestOpened(key), loot: pos.loot, key };
+    });
     S.archerTowers.length=0; S.spawnedTowerKeys.clear(); S.discoveredWildChestKeys.clear();
+    S.shrines.length=0; S.camps.length=0; S.wildNPCs.length=0;
+    S.discoveredShrineKeys.clear(); S.discoveredCampKeys.clear(); S.discoveredWildNPCKeys.clear();
     spawnManager.spawnTimer=0; spawnManager.lastBossLevel=0; spawnManager.bossSpawned=false;
     spawnManager.snorflaxiaSpawned=false; spawnManager.voidAddTimer=0;
     S.ammoSpawnTimer=5;
@@ -66,6 +74,8 @@ export function startGame(className, loadedData=null) {
     S.lastTime=performance.now();
     cancelAnimationFrame(S.animationFrameId);
     gameLoop(performance.now());
+
+    music.play('explore');
 
     setTimeout(()=>{ showFloatingText(S.player.x,S.player.y-100,'Welcome to Grumbleshire!','#FFD700'); },800);
 }
@@ -102,6 +112,7 @@ export function gameOver(killerName=null) {
     const player = S.player;
     S.currentState=GameState.GAME_OVER;
     achievements.recordRunDeath();
+    music.play('endgame');
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('mobile-controls').classList.add('hidden');
     document.getElementById('action-btn').classList.add('hidden');
@@ -119,6 +130,7 @@ export function gameOver(killerName=null) {
 export function returnToMenu() {
     S.currentState=GameState.MENU;
     cancelAnimationFrame(S.animationFrameId);
+    music.play('menu');
     ['pause-menu','game-over-screen','victory-screen','hud','mobile-controls','action-btn','ranged-btn','minimap-wrap','town-flash'].forEach(id=>{
         document.getElementById(id)?.classList.add('hidden');
     });
@@ -138,6 +150,7 @@ const VICTORY_QUOTES = [
 export function triggerVictory() {
     const player = S.player;
     S.currentState = GameState.GAME_OVER;
+    music.play('endgame');
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('mobile-controls').classList.add('hidden');
     document.getElementById('action-btn').classList.add('hidden');
@@ -189,6 +202,7 @@ export function gameLoop(timestamp) {
         }
         for (let i=S.projectiles.length-1;i>=0;i--) { if(S.projectiles[i].update(dt)) S.projectiles.splice(i,1); }
         for (const n of S.npcs) n.update(dt);
+        for (const wn of S.wildNPCs) wn.update(dt);
         for (let i=S.archerTowers.length-1;i>=0;i--) { S.archerTowers[i].update(dt); if(S.archerTowers[i].dead) S.archerTowers.splice(i,1); }
 
         // Items
@@ -222,6 +236,7 @@ export function gameLoop(timestamp) {
                 }
                 questSystem.onOpenChest();
                 achievements.recordChestOpen();
+                if (chest.key) worldPersist.markChestOpened(chest.key);
                 updateQuestTracker();
             }
         }
@@ -245,7 +260,7 @@ export function gameLoop(timestamp) {
         }
 
         // Wild chest discovery — scatter loot across non-plains biomes so
-        // exploration is rewarded even between towns.
+        // exploration is rewarded even between towns. Persists opened state.
         const CHEST_RADIUS = 14;
         for (let dy = -CHEST_RADIUS; dy <= CHEST_RADIUS; dy++) {
             for (let dx = -CHEST_RADIUS; dx <= CHEST_RADIUS; dx++) {
@@ -256,39 +271,114 @@ export function gameLoop(timestamp) {
                         S.discoveredWildChestKeys.add(key);
                         const wx = tx * TILE_SIZE + TILE_SIZE/2;
                         const wy = ty * TILE_SIZE + TILE_SIZE/2;
-                        // Pick loot deterministically from biome difficulty
                         const biome = getBiomeAtWorld(wx, wy);
                         const tier = biome.difficulty || 1;
                         const pools = [ARMOR_ITEMS, RING_ITEMS, SHIELD_ITEMS];
-                        const pool = pools[(tx + ty) % 3 < 0 ? 0 : Math.abs((tx*3+ty*5)) % 3];
+                        const pool = pools[Math.abs((tx*3+ty*5)) % 3];
                         const idx = Math.min(pool.length-1, Math.max(0, Math.floor(tier / 2)));
-                        S.chests.push({ x: wx, y: wy, opened: false, loot: pool[idx] });
+                        const opened = worldPersist.isChestOpened(key);
+                        S.chests.push({ x: wx, y: wy, opened, loot: pool[idx], key });
                     }
                 }
             }
         }
 
-        // F key NPC interaction (talk OR turn in quest if ready)
+        // Wilderness landmark discovery — shrines, camps, wild NPCs
+        const LANDMARK_RADIUS = 14;
+        for (let dy = -LANDMARK_RADIUS; dy <= LANDMARK_RADIUS; dy++) {
+            for (let dx = -LANDMARK_RADIUS; dx <= LANDMARK_RADIUS; dx++) {
+                const tx = ptx + dx, ty = pty + dy;
+                // Shrine
+                if (hasShrineAtTile(tx, ty)) {
+                    const key = `shrine_${tx}_${ty}`;
+                    if (!S.discoveredShrineKeys.has(key)) {
+                        S.discoveredShrineKeys.add(key);
+                        const wx = tx*TILE_SIZE + TILE_SIZE/2, wy = ty*TILE_SIZE + TILE_SIZE/2;
+                        const biome = getBiomeAtWorld(wx, wy);
+                        const sh = new Shrine(wx, wy, biome.id, key);
+                        sh.used = worldPersist.isShrineUsed(key);
+                        S.shrines.push(sh);
+                    }
+                }
+                // Camp
+                if (hasCampAtTile(tx, ty)) {
+                    const key = `camp_${tx}_${ty}`;
+                    if (!S.discoveredCampKeys.has(key)) {
+                        S.discoveredCampKeys.add(key);
+                        const wx = tx*TILE_SIZE + TILE_SIZE/2, wy = ty*TILE_SIZE + TILE_SIZE/2;
+                        S.camps.push(new Camp(wx, wy, key));
+                        // Each camp has a small bonus chest right beside it
+                        const chestKey = `campchest_${tx}_${ty}`;
+                        const biome = getBiomeAtWorld(wx, wy);
+                        const tier = biome.difficulty || 1;
+                        const pool = [RING_ITEMS, ARMOR_ITEMS, SHIELD_ITEMS][Math.abs(tx*7+ty*3)%3];
+                        const lootIdx = Math.min(pool.length-1, Math.max(0, Math.floor(tier/2)));
+                        const opened = worldPersist.isChestOpened(chestKey);
+                        S.chests.push({ x: wx+30, y: wy+5, opened, loot: pool[lootIdx], key: chestKey });
+                    }
+                }
+                // Wild NPC
+                if (hasWildNPCAtTile(tx, ty)) {
+                    const key = `wnpc_${tx}_${ty}`;
+                    if (!S.discoveredWildNPCKeys.has(key)) {
+                        S.discoveredWildNPCKeys.add(key);
+                        const wx = tx*TILE_SIZE + TILE_SIZE/2, wy = ty*TILE_SIZE + TILE_SIZE/2;
+                        const preset = WILD_NPC_PRESETS[Math.abs(tx*11+ty*13) % WILD_NPC_PRESETS.length];
+                        S.wildNPCs.push(new WildNPC(wx, wy, preset, key));
+                    }
+                }
+            }
+        }
+
+        // Music switching — boss music if any boss alive, else exploration.
+        const bossAlive = S.enemies.some(e => e.isBoss);
+        const desiredTrack = bossAlive ? 'boss' : 'explore';
+        if (music.currentTrack !== desiredTrack) music.play(desiredTrack);
+
+        // F key: NPC talk / quest turn-in / shrine pray / wild NPC talk
         if (S.keys['f']||S.keys['F']) {
             S.keys['f']=false; S.keys['F']=false;
+            // Town NPCs (with quest-giver priority)
+            let handled = false;
             for (const n of S.npcs) {
                 if (Math.hypot(player.x-n.x,player.y-n.y)<70) {
                     const readyQuest = questSystem.readyQuestForNPC(n.name);
                     if (readyQuest) {
-                        // Turn in flow — complete the quest then show success dialog.
                         const completedTitle = readyQuest.title;
                         const completedReward = readyQuest.rewardText;
                         questSystem.complete(readyQuest);
-                        showNPCDialogue(
-                            n.name,
+                        showNPCDialogue(n.name,
                             `"Quest complete: ${completedTitle}. Reward: ${completedReward}. Now go away, I have things to do."`,
-                            n.isMerchant
-                        );
+                            n.isMerchant);
                     } else {
                         const line=n.dialogue[n.dialogueIndex%n.dialogue.length]; n.dialogueIndex++;
                         showNPCDialogue(n.name, line, n.isMerchant);
                     }
+                    handled = true;
                     break;
+                }
+            }
+            // Wild NPCs
+            if (!handled) {
+                for (const wn of S.wildNPCs) {
+                    if (Math.hypot(player.x-wn.x, player.y-wn.y) < 70) {
+                        const line = wn.dialogue[wn.dialogueIndex % wn.dialogue.length];
+                        wn.dialogueIndex++;
+                        showNPCDialogue(wn.name, line, wn.isMerchant);
+                        handled = true;
+                        break;
+                    }
+                }
+            }
+            // Shrines
+            if (!handled) {
+                for (const sh of S.shrines) {
+                    if (!sh.used && Math.hypot(player.x-sh.x, player.y-sh.y) < 60) {
+                        sh.interact();
+                        worldPersist.markShrineUsed(sh.key);
+                        handled = true;
+                        break;
+                    }
                 }
             }
         }
@@ -344,7 +434,10 @@ export function gameLoop(timestamp) {
         }
 
         for (const t of S.archerTowers) t.draw();
+        for (const c of S.camps) c.draw();
+        for (const sh of S.shrines) sh.draw();
         for (const n of S.npcs) n.draw();
+        for (const wn of S.wildNPCs) wn.draw();
         for (const e of S.enemies) e.draw();
         S.player.drawPlayer();
         for (const p of S.projectiles) p.draw();

@@ -402,6 +402,60 @@ canvas#gameCanvas {
     font-size: 0.65rem;
     color: #FFD700;
     letter-spacing: 1.2px;
+
+/* ── AUDIO CONTROL WIDGET ─────────────────────────────────── */
+#audio-widget {
+    position: absolute;
+    bottom: 14px;
+    right: 14px;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(10, 12, 20, 0.75);
+    border: 1px solid #2a2a35;
+    border-radius: 18px;
+    padding: 6px 10px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+}
+#audio-mute-btn {
+    background: transparent;
+    color: #FFD700;
+    border: none;
+    font-size: 1.3rem;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.15s;
+}
+#audio-mute-btn:hover { color: #fff; }
+#audio-mute-btn.muted { color: #666; text-decoration: line-through; }
+#audio-volume {
+    width: 90px;
+    height: 4px;
+    background: #2a2a35;
+    border-radius: 2px;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+}
+#audio-volume::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #FFD700;
+    cursor: pointer;
+    box-shadow: 0 0 4px rgba(255,215,0,0.6);
+}
+#audio-volume::-moz-range-thumb {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #FFD700;
+    cursor: pointer;
+    border: none;
+}
+
     margin-bottom: 2px;
     opacity: 0.9;
 }

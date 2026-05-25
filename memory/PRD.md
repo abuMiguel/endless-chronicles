@@ -120,6 +120,30 @@ Addressed playtest feedback that the world felt empty and unfair:
   and procedural **wild chests** (`hasWildChestAtTile`) are scattered across
   non-plains biomes with biome-difficulty-tiered loot.
 
+### Phase 5 — Music, Persistence, Async Chunks & Wilderness (Verified Feb 2026)
+- **Music system** (`/app/js/audio.js`) with 5 crossfading tracks:
+  *menu*, *exploration*, *combat* (reserved), *boss*, *endgame*. Volume slider
+  + mute button widget in bottom-right corner; preferences persisted in
+  localStorage. Auto-switches to boss music when any boss is alive, back to
+  exploration when defeated, endgame on death/victory.
+- **Wild chest persistence** (`/app/js/worldPersist.js`) — opened chests stay
+  opened across page reloads via `endlessChronicles_world` localStorage key.
+  Pre-placed chests, wild chests, and camp bonus chests all participate.
+- **Async/throttled chunk generation** — max 2 chunks built per frame;
+  pending chunks render as flat biome-tinted placeholders so fast travel
+  no longer causes visible stutter. Verified: 50,000px teleport → 48 chunks
+  cached, smooth render.
+- **Wilderness landmarks**:
+  - **Shrines** — rare biome-specific obelisks with one-time permanent buff
+    (Vitality / Strength / Agility / Endurance / Ancient Might / Fury /
+    Soulshield depending on biome). State persisted across runs.
+  - **Abandoned Camps** — campfire + tent visual + a bonus chest beside.
+    Scattered across forest/desert/bog/tundra/ruins.
+  - **Wild NPCs** — 4 presets: Mad Hermit Crustleworth, The Lost Cartographer,
+    Sage Pibblewhisker, Sellsword Brom. Each with silly dialogue, walking
+    randomly within a small radius of their spawn point.
+  - All landmarks deterministic-seeded by tile coords for stable world.
+
 ## Verification Status
 - Smoke-tested via Playwright: menu, all 3 classes, gameplay, pause/resume,
   achievement unlock chain, quest ready → turn-in → completion, Snorflaxia

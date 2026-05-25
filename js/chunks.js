@@ -68,6 +68,39 @@ export function hasWildChestAtTile(tx, ty) {
     return seededHash(tx*37+19, ty*41+23) < rate;
 }
 
+// ── Wilderness landmarks ─────────────────────────────────────
+//
+// Shrines: 1-time permanent buff (vit/str/agi based on biome). Very rare.
+// Camps:   abandoned campfires with extra loot. Moderately rare in mid biomes.
+// Wild NPCs: hermits & wanderers in surprising places. Very rare.
+export function hasShrineAtTile(tx, ty) {
+    if (Math.abs(tx) <= 30 && Math.abs(ty) <= 30) return false;
+    for (const t of TOWNS) { if (Math.abs(tx-t.tileX)<32 && Math.abs(ty-t.tileY)<32) return false; }
+    if (isRoadTile(tx, ty)) return false;
+    if (hasTreeAtTile(tx, ty) || hasWildChestAtTile(tx, ty)) return false;
+    const biome = getBiomeAtTile(tx, ty);
+    if (biome.id === 'plains') return false; // not in starter biome
+    return seededHash(tx*53+29, ty*59+31) < 0.0009;
+}
+export function hasCampAtTile(tx, ty) {
+    if (Math.abs(tx) <= 22 && Math.abs(ty) <= 22) return false;
+    for (const t of TOWNS) { if (Math.abs(tx-t.tileX)<28 && Math.abs(ty-t.tileY)<28) return false; }
+    if (isRoadTile(tx, ty)) return false;
+    if (hasTreeAtTile(tx, ty) || hasWildChestAtTile(tx, ty)) return false;
+    const biome = getBiomeAtTile(tx, ty);
+    if (!['forest','desert','bog','tundra','ruins'].includes(biome.id)) return false;
+    return seededHash(tx*43+13, ty*47+17) < 0.0025;
+}
+export function hasWildNPCAtTile(tx, ty) {
+    if (Math.abs(tx) <= 40 && Math.abs(ty) <= 40) return false;
+    for (const t of TOWNS) { if (Math.abs(tx-t.tileX)<30 && Math.abs(ty-t.tileY)<30) return false; }
+    if (isRoadTile(tx, ty)) return false;
+    if (hasTreeAtTile(tx, ty) || hasWildChestAtTile(tx, ty) || hasShrineAtTile(tx, ty) || hasCampAtTile(tx, ty)) return false;
+    const biome = getBiomeAtTile(tx, ty);
+    if (biome.id === 'plains' || biome.id === 'void') return false;
+    return seededHash(tx*67+41, ty*71+43) < 0.0006;
+}
+
 // ── Tile/road/tree/building drawing (to offscreen ctx) ───────
 function renderTileToCtx(oc, sx, sy, tx, ty, biome) {
     const h = seededHash(tx*3+1, ty*7+2);
@@ -217,14 +250,16 @@ export function pruneDistantChunks() {
     }
 }
 
-function getOrCreateChunk(cx, cy) {
-    const key = `${cx},${cy}`;
-    if (chunkCache.has(key)) {
-        const v = chunkCache.get(key);
-        _touch(key, v);
-        return v;
-    }
+// ── Async chunk generation ───────────────────────────────────
+//
+// Building a chunk involves rendering 256 tiles + roads + trees + buildings
+// into an offscreen canvas — about 1–3ms on modern hardware. When the player
+// fast-travels through unexplored terrain, batching several of these in one
+// frame causes visible stutter. We throttle to MAX_BUILDS_PER_FRAME and draw
+// a flat biome-tinted placeholder while a chunk is still pending.
+const MAX_BUILDS_PER_FRAME = 2;
 
+function _buildChunk(cx, cy) {
     const oc = (typeof OffscreenCanvas!=='undefined')
         ? new OffscreenCanvas(CHUNK_PX, CHUNK_PX)
         : (() => { const c=document.createElement('canvas'); c.width=c.height=CHUNK_PX; return c; })();
@@ -261,21 +296,65 @@ function getOrCreateChunk(cx, cy) {
                 drawBuildingToCtx(oc2, bPX-cpX, bPY-cpY, bW, bH, b.type, b.label||'');
         }
     }
+    return oc;
+}
 
+function _storeChunk(key, oc) {
     chunkCache.set(key, oc);
     if (chunkCache.size > CHUNK_CACHE_MAX) {
         _evictOldest(chunkCache.size - CHUNK_CACHE_MAX);
     }
+}
+
+// Public sync builder used by menu screen pre-warm.
+function getOrCreateChunk(cx, cy) {
+    const key = `${cx},${cy}`;
+    if (chunkCache.has(key)) {
+        const v = chunkCache.get(key);
+        _touch(key, v);
+        return v;
+    }
+    const oc = _buildChunk(cx, cy);
+    _storeChunk(key, oc);
     return oc;
+}
+
+// Throttled draw — used by the main game render path.
+function drawChunkThrottled(cx, cy, budget, drawCb) {
+    const key = `${cx},${cy}`;
+    if (chunkCache.has(key)) {
+        const v = chunkCache.get(key);
+        _touch(key, v);
+        drawCb(v, key);
+        return budget;
+    }
+    if (budget > 0) {
+        const oc = _buildChunk(cx, cy);
+        _storeChunk(key, oc);
+        drawCb(oc, key);
+        return budget - 1;
+    }
+    drawCb(null, key); // signal placeholder
+    return 0;
 }
 
 export function renderTerrain() {
     const { ctx, camera, canvas } = S;
     const cXmin=Math.floor(camera.x/CHUNK_PX)-1, cXmax=Math.ceil((camera.x+canvas.width)/CHUNK_PX)+1;
     const cYmin=Math.floor(camera.y/CHUNK_PX)-1, cYmax=Math.ceil((camera.y+canvas.height)/CHUNK_PX)+1;
+    let budget = MAX_BUILDS_PER_FRAME;
     for (let cy=cYmin;cy<=cYmax;cy++) for (let cx=cXmin;cx<=cXmax;cx++) {
-        const cc=getOrCreateChunk(cx,cy);
-        ctx.drawImage(cc, cx*CHUNK_PX-camera.x, cy*CHUNK_PX-camera.y);
+        const dx = cx*CHUNK_PX - camera.x, dy = cy*CHUNK_PX - camera.y;
+        budget = drawChunkThrottled(cx, cy, budget, (cc, _key) => {
+            if (cc) {
+                ctx.drawImage(cc, dx, dy);
+            } else {
+                // Placeholder — flat biome tint while the chunk is queued.
+                const centerBiome = getBiomeAtTile(cx*CHUNK_TILES+8, cy*CHUNK_TILES+8);
+                ctx.fillStyle = centerBiome.tileColors[0];
+                ctx.fillRect(dx, dy, CHUNK_PX, CHUNK_PX);
+            }
+        });
     }
 }
 

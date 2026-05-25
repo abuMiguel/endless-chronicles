@@ -8,6 +8,7 @@ import {
 } from './game.js';
 import { saveGame, checkSaveGame } from './systems.js';
 import { closeNPCDialogue, renderAchievementsScreen } from './ui.js';
+import { music } from './audio.js';
 
 export function initInput() {
     // ── Keyboard ──
@@ -82,6 +83,22 @@ export function initInput() {
 
     // Victory screen restart
     document.getElementById('victory-restart-btn')?.addEventListener('click', returnToMenu);
+
+    // ── Audio Widget ──
+    const muteBtn = document.getElementById('audio-mute-btn');
+    const volSlider = document.getElementById('audio-volume');
+    if (volSlider) {
+        // Initialize from persisted prefs
+        volSlider.value = String(Math.round(music.volume * 100));
+        if (music.isMuted()) muteBtn?.classList.add('muted');
+        volSlider.addEventListener('input', e => {
+            music.setVolume(parseInt(e.target.value, 10) / 100);
+        });
+    }
+    muteBtn?.addEventListener('click', () => {
+        music.toggleMute();
+        muteBtn.classList.toggle('muted', music.isMuted());
+    });
 
     // ── Level Up upgrades ──
     document.querySelectorAll('.upgrade-btn').forEach(btn=>{

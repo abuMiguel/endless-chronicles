@@ -29,6 +29,190 @@ export function createParticles(x,y,color,count) {
 export function showFloatingText(x,y,text,color='white',isCrit=false) {
     S.floatTexts.push({ x,y,text:String(text),color,isCrit,life:1.2,maxLife:1.2 });
 }
+
+// ── Wilderness landmark types ────────────────────────────────
+// Shrines, abandoned camps, wild NPCs are simple drawable objects with an
+// optional interact() method invoked by F-press.
+export const WILD_NPC_PRESETS = [
+    { tag:'hermit',    name:'Mad Hermit Crustleworth', dialogue:[
+        '"You ever try... eating a rock? I have. Six. They were terrible."',
+        '"Out here you learn things. Mostly that you should have stayed home."',
+        '"The Hydra in the bog? Yeah. Don\'t. Just don\'t."',
+    ]},
+    { tag:'wanderer',  name:'The Lost Cartographer',   dialogue:[
+        '"I had a map. I lost the map. Now I am the map. Conceptually."',
+        '"Towns are that way. Or possibly that way. Definitely a way."',
+        '"If you see Bumblesnatch, please tell them Gertrude is fine."',
+    ]},
+    { tag:'sage',      name:'Sage Pibblewhisker',      dialogue:[
+        '"Wisdom: shields good. Fire bad. That\'ll be 12 gold."',
+        '"Snorflaxia? Pft. I knew her great-aunt. Lovely woman. Mildly cursed."',
+        '"You will face great peril. Also, possibly some moderate peril."',
+    ]},
+    { tag:'merc',      name:'Sellsword Brom',          isMerchant:true, dialogue:[
+        '"Out here? Out HERE I sell at a HUGE markup. It\'s the inconvenience tax."',
+        '"You buying? You should be buying."',
+    ]},
+];
+
+export class Shrine {
+    constructor(wx, wy, biomeId, key) {
+        this.x = wx; this.y = wy; this.size = 22;
+        this.biomeId = biomeId; this.key = key;
+        this.used = false;
+        // Buff varies by biome
+        const buffs = {
+            forest:   { stat:'speed',  amount:15, label:'Agility', color:'#69F0AE' },
+            desert:   { stat:'damage', amount:4,  label:'Strength', color:'#FFB300' },
+            bog:      { stat:'maxHp',  amount:30, label:'Vitality', color:'#43A047' },
+            tundra:   { stat:'maxHp',  amount:25, label:'Endurance', color:'#80DEEA' },
+            ruins:    { stat:'damage', amount:6,  label:'Ancient Might', color:'#B388FF' },
+            volcanic: { stat:'damage', amount:8,  label:'Fury', color:'#FF5722' },
+            void:     { stat:'maxHp',  amount:60, label:'Soulshield', color:'#E040FB' },
+        };
+        this.buff = buffs[biomeId] || buffs.forest;
+    }
+    draw() {
+        const { ctx, camera, canvas, player } = S;
+        const dx = this.x-camera.x, dy = this.y-camera.y;
+        if (dx<-40||dx>canvas.width+40||dy<-40||dy>canvas.height+40) return;
+        // Stone obelisk + glow
+        ctx.fillStyle='rgba(0,0,0,0.35)';
+        ctx.beginPath(); ctx.ellipse(dx, dy+14, 14, 5, 0, 0, Math.PI*2); ctx.fill();
+        if (!this.used) {
+            const pulse = 0.45 + Math.sin(Date.now()/240)*0.25;
+            ctx.save(); ctx.globalAlpha = pulse * 0.45;
+            ctx.fillStyle = this.buff.color;
+            ctx.beginPath(); ctx.arc(dx, dy-4, 28, 0, Math.PI*2); ctx.fill();
+            ctx.restore();
+        }
+        ctx.fillStyle = this.used ? '#3a3a44' : '#5a5a70';
+        ctx.fillRect(dx-7, dy-16, 14, 28);
+        ctx.fillStyle = this.used ? '#2a2a34' : '#42424f';
+        ctx.fillRect(dx-9, dy+10, 18, 6);
+        // Glyph
+        ctx.fillStyle = this.used ? '#666' : this.buff.color;
+        ctx.font = 'bold 14px Courier New'; ctx.textAlign='center';
+        ctx.fillText('✦', dx, dy-2);
+        ctx.textAlign='left';
+        if (player && Math.hypot(player.x-this.x, player.y-this.y) < 60) {
+            ctx.fillStyle = 'rgba(255,255,255,0.92)';
+            ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center';
+            if (this.used) ctx.fillText('Shrine (used)', dx, dy-30);
+            else ctx.fillText(`[F] Pray (+${this.buff.amount} ${this.buff.label})`, dx, dy-30);
+            ctx.textAlign = 'left';
+        }
+    }
+    interact() {
+        if (this.used) return;
+        const player = S.player;
+        const b = this.buff;
+        if (b.stat==='maxHp')  { player.maxHp += b.amount; player.hp = Math.min(player.maxHp, player.hp+b.amount); }
+        if (b.stat==='damage') { player.damage += b.amount; }
+        if (b.stat==='speed')  { player.speed += b.amount; }
+        this.used = true;
+        showFloatingText(this.x, this.y-40, `+${b.amount} ${b.label}!`, b.color);
+        showFloatingText(this.x, this.y-60, 'The shrine fades.', '#aaa');
+        updateHUD();
+    }
+}
+
+export class Camp {
+    constructor(wx, wy, key) {
+        this.x = wx; this.y = wy; this.size = 36;
+        this.key = key;
+        this.fireAngle = Math.random()*Math.PI*2;
+    }
+    draw() {
+        const { ctx, camera, canvas } = S;
+        const dx = this.x-camera.x, dy = this.y-camera.y;
+        if (dx<-50||dx>canvas.width+50||dy<-50||dy>canvas.height+50) return;
+        // Ground scorch
+        ctx.fillStyle='rgba(0,0,0,0.40)';
+        ctx.beginPath(); ctx.ellipse(dx, dy+4, 26, 9, 0, 0, Math.PI*2); ctx.fill();
+        // Logs (cross)
+        ctx.fillStyle='#5d3a1a';
+        ctx.fillRect(dx-12, dy-2, 24, 4);
+        ctx.save(); ctx.translate(dx, dy); ctx.rotate(Math.PI/4);
+        ctx.fillRect(-12, -2, 24, 4);
+        ctx.restore();
+        // Flickering fire
+        const fl = 0.65 + Math.sin(Date.now()/90 + this.fireAngle)*0.25;
+        ctx.fillStyle = `rgba(255, ${Math.floor(120+fl*100)}, 0, 0.85)`;
+        ctx.beginPath();
+        ctx.moveTo(dx, dy-14); ctx.lineTo(dx-7, dy); ctx.lineTo(dx+7, dy);
+        ctx.fill();
+        ctx.fillStyle = `rgba(255, 220, 80, ${0.5+fl*0.35})`;
+        ctx.beginPath();
+        ctx.moveTo(dx, dy-9); ctx.lineTo(dx-4, dy-1); ctx.lineTo(dx+4, dy-1);
+        ctx.fill();
+        // Tent (off to one side)
+        ctx.fillStyle='#5e4633';
+        ctx.beginPath();
+        ctx.moveTo(dx+18, dy+8); ctx.lineTo(dx+38, dy+8); ctx.lineTo(dx+28, dy-12);
+        ctx.fill();
+        ctx.fillStyle='#3c2a18';
+        ctx.beginPath();
+        ctx.moveTo(dx+24, dy+8); ctx.lineTo(dx+32, dy+8); ctx.lineTo(dx+28, dy+0);
+        ctx.fill();
+    }
+}
+
+export class WildNPC {
+    constructor(wx, wy, preset, key) {
+        this.x = wx; this.y = wy; this.size = 16;
+        this.homeX = wx; this.homeY = wy;
+        this.name = preset.name;
+        this.dialogue = preset.dialogue;
+        this.isMerchant = !!preset.isMerchant;
+        this.key = key; this.preset = preset.tag;
+        this.dialogueIndex = 0;
+        this.wanderTimer = Math.random()*4 + 2;
+        this.vx = 0; this.vy = 0;
+    }
+    update(dt) {
+        this.wanderTimer -= dt;
+        if (this.wanderTimer <= 0) {
+            const ang = Math.random()*Math.PI*2, dist = Math.random()*50;
+            const tx = this.homeX + Math.cos(ang)*dist, ty = this.homeY + Math.sin(ang)*dist;
+            const dxn = tx - this.x, dyn = ty - this.y, d = Math.hypot(dxn,dyn) || 1;
+            this.vx = (dxn/d)*16; this.vy = (dyn/d)*16;
+            this.wanderTimer = 3 + Math.random()*3;
+        }
+        this.x += this.vx*dt; this.y += this.vy*dt;
+    }
+    draw() {
+        const { ctx, camera, canvas, player } = S;
+        const dx = this.x-camera.x, dy = this.y-camera.y;
+        if (dx<-40||dx>canvas.width+40||dy<-40||dy>canvas.height+40) return;
+        ctx.fillStyle='rgba(0,0,0,0.2)';
+        ctx.beginPath(); ctx.ellipse(dx, dy+12, 10, 4, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='#5a3a20'; ctx.fillRect(dx-5, dy+6, 4, 7); ctx.fillRect(dx+1, dy+6, 4, 7);
+        const robe = this.preset==='hermit' ? '#5a4030' :
+                     this.preset==='wanderer' ? '#4a5560' :
+                     this.preset==='sage' ? '#3a2855' : '#7a4020';
+        ctx.fillStyle = robe; ctx.fillRect(dx-7, dy-4, 14, 10);
+        ctx.fillStyle = '#FFE0B2'; ctx.beginPath(); ctx.arc(dx, dy-9, 7, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#333'; ctx.fillRect(dx-3, dy-10, 2, 2); ctx.fillRect(dx+1, dy-10, 2, 2);
+        // Hood / hat
+        if (this.preset==='sage') { ctx.fillStyle='#1a0a3a'; ctx.fillRect(dx-7, dy-18, 14, 6); ctx.beginPath(); ctx.moveTo(dx-7,dy-18); ctx.lineTo(dx,dy-28); ctx.lineTo(dx+7,dy-18); ctx.fill(); }
+        else if (this.preset==='hermit') { ctx.fillStyle='#3a2210'; ctx.fillRect(dx-8, dy-17, 16, 7); }
+        else { ctx.fillStyle='#3a2818'; ctx.fillRect(dx-6, dy-15, 12, 5); }
+
+        ctx.font='8px Courier New';
+        const nw = ctx.measureText(this.name).width;
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(dx-nw/2-2, dy-28, nw+4, 11);
+        ctx.fillStyle = this.isMerchant ? '#FFA000' : '#CE93D8';
+        ctx.textAlign='center'; ctx.fillText(this.name, dx, dy-19); ctx.textAlign='left';
+        if (player && Math.hypot(player.x-this.x, player.y-this.y) < 60) {
+            ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.font='bold 10px Courier New'; ctx.textAlign='center';
+            ctx.fillText('[F] Talk', dx, dy-38);
+            ctx.textAlign='left';
+        }
+    }
+}
+
 export function resolveTreeCollision(entity) {
     const trees = getTreesNearPoint(entity.x, entity.y, TREE_COLL_R+entity.size/2+12);
     for (const tree of trees) {
