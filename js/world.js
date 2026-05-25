@@ -167,6 +167,44 @@ export function isRoadTile(tx, ty) {
     return false;
 }
 
+// ── Building Walls (precomputed AABBs for collision) ─────────
+// Each building gets 5 wall AABBs: top, left, right, bottom-left-of-door,
+// bottom-right-of-door. Door is a 18px gap centered at the building bottom.
+const _BUILDING_WALLS = (() => {
+    const walls = [];
+    const T = 6;       // wall thickness
+    const DOOR_W = 36; // door gap width (wide enough for any sprite to walk through)
+    for (const town of TOWNS) {
+        for (const b of town.buildings) {
+            const x = (town.tileX + b.tx) * TILE_SIZE;
+            const y = (town.tileY + b.ty) * TILE_SIZE;
+            const w = b.tw * TILE_SIZE;
+            const h = b.th * TILE_SIZE;
+            const doorX = x + w/2 - DOOR_W/2;
+            // Top, left, right walls (placed just outside the building footprint)
+            walls.push({ x: x-T, y: y-T,  w: w+2*T, h: T });
+            walls.push({ x: x-T, y: y,    w: T,    h: h });
+            walls.push({ x: x+w, y: y,    w: T,    h: h });
+            // Bottom wall split into two segments around the door
+            walls.push({ x: x-T,         y: y+h, w: doorX-(x-T),           h: T });
+            walls.push({ x: doorX+DOOR_W,y: y+h, w: (x+w+T)-(doorX+DOOR_W),h: T });
+        }
+    }
+    return walls;
+})();
+export function getBuildingWalls() { return _BUILDING_WALLS; }
+
+// Check whether a (worldX, worldY) point lies inside any town's safe radius.
+export function isInsideAnyTown(wx, wy, extraMargin = 0) {
+    for (const t of TOWNS) {
+        const tx = t.tileX * TILE_SIZE, ty = t.tileY * TILE_SIZE;
+        // Use a rectangular "village area" that covers all buildings of the town.
+        if (Math.abs(wx - tx) < 22*TILE_SIZE + extraMargin &&
+            Math.abs(wy - ty) < 16*TILE_SIZE + extraMargin) return true;
+    }
+    return false;
+}
+
 // ── Monsters ─────────────────────────────────────────────────
 export const MonsterTypes = [
     { id:'rat',       name:'Giant Rat',         biomes:['plains','forest'],          minLevel:1,  hp:28,  dmg:5,  speed:115, xp:10,  color:'#795548', size:13, behavior:'chase',   desc:'Fast but weak. Travels in packs. Loves Bert\'s cabbages.' },

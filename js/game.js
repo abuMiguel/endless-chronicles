@@ -6,8 +6,11 @@ import {
     S, GameState, TILE_SIZE, CHUNK_PRUNE_INTERVAL,
 } from './state.js';
 import { getBiomeAtWorld, _biomeCache } from './biomes.js';
-import { TOWNS, CHEST_SPAWN_DATA, DEATH_QUOTES } from './world.js';
-import { renderTerrain, pruneDistantChunks, clearChunkCache } from './chunks.js';
+import { TOWNS, CHEST_SPAWN_DATA, DEATH_QUOTES, ARMOR_ITEMS, RING_ITEMS, SHIELD_ITEMS } from './world.js';
+import {
+    renderTerrain, pruneDistantChunks, clearChunkCache,
+    hasTowerAtTile, hasWildChestAtTile,
+} from './chunks.js';
 import { Player, Classes, NPC, ArcherTower } from './entities.js';
 import { spawnManager, questSystem, deleteSaveGame } from './systems.js';
 import { achievements } from './achievements.js';
@@ -49,7 +52,7 @@ export function startGame(className, loadedData=null) {
     S.enemies.length=0; S.projectiles.length=0; S.particles.length=0;
     S.items.length=0; S.floatTexts.length=0;
     S.chests = CHEST_SPAWN_DATA.map(pos=>({x:pos.x,y:pos.y,opened:false,loot:pos.loot}));
-    S.archerTowers.length=0; S.spawnedTowerKeys.clear();
+    S.archerTowers.length=0; S.spawnedTowerKeys.clear(); S.discoveredWildChestKeys.clear();
     spawnManager.spawnTimer=0; spawnManager.lastBossLevel=0; spawnManager.bossSpawned=false;
     spawnManager.snorflaxiaSpawned=false; spawnManager.voidAddTimer=0;
     S.ammoSpawnTimer=5;
@@ -171,10 +174,12 @@ export function gameLoop(timestamp) {
 
         S.ammoSpawnTimer-=dt;
         if (S.ammoSpawnTimer<=0) {
-            const a=Math.random()*Math.PI*2, d=200+Math.random()*300;
-            const biome=getBiomeAtWorld(player.x,player.y);
-            const ammoType=biome.id==='desert'||biome.id==='ruins'?'rock':'arrow';
-            S.items.push({ x:player.x+Math.cos(a)*d, y:player.y+Math.sin(a)*d, size:8, ammoType, ammoCount:3+Math.floor(Math.random()*4), life:20, bob:Math.random()*Math.PI*2 });
+            // Wizard never uses ammo, so we just reset the timer.
+            if (player.classType !== 'wizard') {
+                const a=Math.random()*Math.PI*2, d=200+Math.random()*300;
+                const ammoType = player.classType==='knight' ? 'arrow' : 'rock';
+                S.items.push({ x:player.x+Math.cos(a)*d, y:player.y+Math.sin(a)*d, size:8, ammoType, ammoCount:3+Math.floor(Math.random()*4), life:20, bob:Math.random()*Math.PI*2 });
+            }
             S.ammoSpawnTimer=5+Math.random()*5;
         }
 
@@ -221,16 +226,44 @@ export function gameLoop(timestamp) {
             }
         }
 
-        // Archer Tower spawns near towns
-        for (const town of TOWNS) {
-            if (Math.hypot(player.x-town.tileX*TILE_SIZE,player.y-town.tileY*TILE_SIZE)<600) {
-                const key=`tower_${town.id}`;
-                if (!S.spawnedTowerKeys.has(key)) {
-                    S.spawnedTowerKeys.add(key);
-                    const tx=(town.tileX+12)*TILE_SIZE, ty=(town.tileY-8)*TILE_SIZE;
-                    S.archerTowers.push(new ArcherTower(tx,ty));
-                    const tx2=(town.tileX-12)*TILE_SIZE, ty2=(town.tileY+6)*TILE_SIZE;
-                    S.archerTowers.push(new ArcherTower(tx2,ty2));
+        // Archer Towers spawn in hostile wild biomes (ruins/volcanic/void) only,
+        // never inside or near friendly towns. Deterministic by seeded hash.
+        const ptx = Math.floor(player.x / TILE_SIZE), pty = Math.floor(player.y / TILE_SIZE);
+        const TOWER_RADIUS = 16;
+        for (let dy = -TOWER_RADIUS; dy <= TOWER_RADIUS; dy++) {
+            for (let dx = -TOWER_RADIUS; dx <= TOWER_RADIUS; dx++) {
+                const tx = ptx + dx, ty = pty + dy;
+                if (hasTowerAtTile(tx, ty)) {
+                    const key = `tower_${tx}_${ty}`;
+                    if (!S.spawnedTowerKeys.has(key)) {
+                        S.spawnedTowerKeys.add(key);
+                        const wx = tx * TILE_SIZE + TILE_SIZE/2, wy = ty * TILE_SIZE + TILE_SIZE/2;
+                        S.archerTowers.push(new ArcherTower(wx, wy));
+                    }
+                }
+            }
+        }
+
+        // Wild chest discovery — scatter loot across non-plains biomes so
+        // exploration is rewarded even between towns.
+        const CHEST_RADIUS = 14;
+        for (let dy = -CHEST_RADIUS; dy <= CHEST_RADIUS; dy++) {
+            for (let dx = -CHEST_RADIUS; dx <= CHEST_RADIUS; dx++) {
+                const tx = ptx + dx, ty = pty + dy;
+                if (hasWildChestAtTile(tx, ty)) {
+                    const key = `wchest_${tx}_${ty}`;
+                    if (!S.discoveredWildChestKeys.has(key)) {
+                        S.discoveredWildChestKeys.add(key);
+                        const wx = tx * TILE_SIZE + TILE_SIZE/2;
+                        const wy = ty * TILE_SIZE + TILE_SIZE/2;
+                        // Pick loot deterministically from biome difficulty
+                        const biome = getBiomeAtWorld(wx, wy);
+                        const tier = biome.difficulty || 1;
+                        const pools = [ARMOR_ITEMS, RING_ITEMS, SHIELD_ITEMS];
+                        const pool = pools[(tx + ty) % 3 < 0 ? 0 : Math.abs((tx*3+ty*5)) % 3];
+                        const idx = Math.min(pool.length-1, Math.max(0, Math.floor(tier / 2)));
+                        S.chests.push({ x: wx, y: wy, opened: false, loot: pool[idx] });
+                    }
                 }
             }
         }

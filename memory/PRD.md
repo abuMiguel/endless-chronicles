@@ -98,6 +98,28 @@ Sacred seed: `69420`.
   level/score/kills, "RETURN TO TITLE" button
 - **Phase 2 dialogue moment**: *"Now I am SLIGHTLY MORE disappointed."*
 
+### Phase 4 — World Feel & Fairness Patches (Verified Feb 2026)
+Addressed playtest feedback that the world felt empty and unfair:
+- **Towers moved to wild hostile biomes** (ruins/volcanic/void) — deterministic
+  seeded positions (`hasTowerAtTile`). No towers in or near friendly towns.
+- **No arrow drops or spawns for Wizard class** — they're a useless inventory
+  taking up screen space. Knight gets arrows, Beast gets rocks, Wizard gets neither.
+- **Town building walls are solid** — both player and enemies are pushed out of
+  building AABBs. Each building has a 36px door gap at center-bottom that
+  remains the only passable entry.
+- **Enemies never spawn inside town areas** — spawn manager rejects any spawn
+  point within 22×16 tiles of a town center; up to 6 retries before skipping.
+- **Town slow-spawn**: while player is inside any town the spawn timer extends
+  to 6s, so towns feel like safe havens.
+- **Announcement cooldown (90s)** for both town flash banners and biome name
+  float-text. No more banner spam when wandering in/out.
+- **Manual fix**: "Shield: SHIFT (Knight only)" corrected to "any class —
+  requires equipped shield".
+- **Engagement boost**: enemies now aggro by default (no more passive wander),
+  spawn interval lowered at level 1 (`0.85s` baseline → `~0.6s` after diff modifier),
+  and procedural **wild chests** (`hasWildChestAtTile`) are scattered across
+  non-plains biomes with biome-difficulty-tiered loot.
+
 ## Verification Status
 - Smoke-tested via Playwright: menu, all 3 classes, gameplay, pause/resume,
   achievement unlock chain, quest ready → turn-in → completion, Snorflaxia

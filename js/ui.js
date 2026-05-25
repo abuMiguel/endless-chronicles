@@ -52,6 +52,10 @@ export function renderMinimap() {
 }
 
 // ── Town Tracking ────────────────────────────────────────────
+// Cooldown so the same town doesn't keep banner-flashing whenever the
+// player wanders out and back in. 90 seconds between announcements per town.
+const TOWN_ANNOUNCE_COOLDOWN = 90_000; // ms
+const _lastAnnouncedAt = new Map(); // townId -> timestamp
 let _lastTownId = null;
 export function checkTownProximity() {
     const player = S.player;
@@ -62,7 +66,12 @@ export function checkTownProximity() {
             achievements.recordTownVisit(town.id);
             if (_lastTownId!==town.id) {
                 _lastTownId=town.id;
-                showTownFlash(town);
+                const now = Date.now();
+                const last = _lastAnnouncedAt.get(town.id) || 0;
+                if (now - last > TOWN_ANNOUNCE_COOLDOWN) {
+                    _lastAnnouncedAt.set(town.id, now);
+                    showTownFlash(town);
+                }
                 document.getElementById('biome-name-display').style.color='#FFD700';
                 document.getElementById('biome-name-display').textContent=town.name;
             }
@@ -71,7 +80,7 @@ export function checkTownProximity() {
     }
     _lastTownId=null;
 }
-export function resetTownTracking() { _lastTownId=null; }
+export function resetTownTracking() { _lastTownId=null; _lastAnnouncedAt.clear(); }
 
 let _townFlashTimeout=null;
 export function showTownFlash(town) {
@@ -97,6 +106,9 @@ export function closeNPCDialogue() {
 }
 
 // ── Biome display update ─────────────────────────────────────
+// Cooldown per biome so re-entries don't keep popping the floating banner.
+const BIOME_ANNOUNCE_COOLDOWN = 90_000; // ms
+const _biomeAnnouncedAt = new Map();
 let _lastBiomeId='';
 export function updateBiomeDisplay() {
     const player = S.player;
@@ -108,12 +120,17 @@ export function updateBiomeDisplay() {
         const el=document.getElementById('biome-name-display');
         el.style.color=biome.minimapColor;
         el.textContent=biome.name;
-        showFloatingText(player.x,player.y-60,biome.name,biome.minimapColor);
+        const now = Date.now();
+        const last = _biomeAnnouncedAt.get(biome.id) || 0;
+        if (now - last > BIOME_ANNOUNCE_COOLDOWN) {
+            _biomeAnnouncedAt.set(biome.id, now);
+            showFloatingText(player.x,player.y-60,biome.name,biome.minimapColor);
+        }
     }
     const tx=Math.floor(player.x/TILE_SIZE), ty=Math.floor(player.y/TILE_SIZE);
     document.getElementById('coords-display').textContent=`Tile ${tx}, ${ty}`;
 }
-export function resetBiomeDisplay() { _lastBiomeId=''; }
+export function resetBiomeDisplay() { _lastBiomeId=''; _biomeAnnouncedAt.clear(); }
 
 // ── Quest Tracker ────────────────────────────────────────────
 export function updateQuestTracker() {

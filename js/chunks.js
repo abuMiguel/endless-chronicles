@@ -39,6 +39,35 @@ export function getTreesNearPoint(cx, cy, radius) {
     return res;
 }
 
+// ── Wild tower positions (deterministic, hostile biomes only) ─
+// Towers spawn only in ruins / volcanic / void biomes, never in or
+// near towns, never on roads, and not in the safe starting circle.
+export function hasTowerAtTile(tx, ty) {
+    if (Math.abs(tx) <= 60 && Math.abs(ty) <= 60) return false;
+    for (const t of TOWNS) { if (Math.abs(tx-t.tileX)<28 && Math.abs(ty-t.tileY)<28) return false; }
+    if (isRoadTile(tx, ty)) return false;
+    const biome = getBiomeAtTile(tx, ty);
+    if (!['ruins','volcanic','void'].includes(biome.id)) return false;
+    return seededHash(tx*23+11, ty*31+17) < 0.006;
+}
+
+// ── Wild treasure chest positions (deterministic, all non-plains biomes) ─
+// Adds a steady drip of loot for exploration. Higher density in dangerous biomes.
+const _WILD_CHEST_RATES = {
+    forest: 0.0030, desert: 0.0028, bog: 0.0040,
+    tundra: 0.0036, ruins: 0.0055, volcanic: 0.0048, void: 0.0060,
+};
+export function hasWildChestAtTile(tx, ty) {
+    if (Math.abs(tx) <= 12 && Math.abs(ty) <= 12) return false;
+    for (const t of TOWNS) { if (Math.abs(tx-t.tileX)<22 && Math.abs(ty-t.tileY)<22) return false; }
+    if (isRoadTile(tx, ty)) return false;
+    const biome = getBiomeAtTile(tx, ty);
+    const rate = _WILD_CHEST_RATES[biome.id];
+    if (!rate) return false;
+    if (hasTreeAtTile(tx, ty)) return false;
+    return seededHash(tx*37+19, ty*41+23) < rate;
+}
+
 // ── Tile/road/tree/building drawing (to offscreen ctx) ───────
 function renderTileToCtx(oc, sx, sy, tx, ty, biome) {
     const h = seededHash(tx*3+1, ty*7+2);
@@ -136,7 +165,7 @@ function drawBuildingToCtx(oc, bx, by, bw, bh, type, label) {
         oc.fillStyle='rgba(0,0,0,0.35)'; oc.fillRect(wx+3,by+wt+2,1.5,6); oc.fillRect(wx,by+wt+4,8,1);
         oc.fillStyle='#ffe082';
     }
-    const dw=10, dh=wt+2, dx=bx+bw/2-dw/2, dy=by+bh-dh;
+    const dw=32, dh=wt+2, dx=bx+bw/2-dw/2, dy=by+bh-dh;
     oc.fillStyle='#1a1205'; oc.fillRect(dx,dy,dw,dh+2);
     oc.fillStyle='#c8a050'; oc.fillRect(dx+dw-4,dy+3,2,4);
     oc.strokeStyle='rgba(0,0,0,0.7)'; oc.lineWidth=2; oc.strokeRect(bx,by,bw,bh);

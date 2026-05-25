@@ -42,6 +42,7 @@ export const S = {
     archerTowers: [],
     npcs: [],
     spawnedTowerKeys: new Set(),
+    discoveredWildChestKeys: new Set(),
     ammoSpawnTimer: 5,
     chunkPruneTimer: 0,
 };

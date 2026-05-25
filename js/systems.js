@@ -2,8 +2,8 @@
 // SYSTEMS  ─  quests + spawn manager + save/load
 // ============================================================
 'use strict';
-import { S } from './state.js';
-import { MonsterTypes, BIOME_SPAWN_TABLES, RING_ITEMS } from './world.js';
+import { S, TILE_SIZE } from './state.js';
+import { MonsterTypes, BIOME_SPAWN_TABLES, RING_ITEMS, isInsideAnyTown } from './world.js';
 import { getBiomeAtWorld } from './biomes.js';
 import { showFloatingText } from './entities.js';
 import { Enemy } from './entities.js';
@@ -108,12 +108,18 @@ export const spawnManager = {
         this.spawnTimer-=dt;
         const diff=document.getElementById('difficulty-select')?.value||'normal';
         const iMult=diff==='easy'?2.1:(diff==='hard'?0.75:1.0);
+        // Faster early-game spawns so the world feels alive immediately.
         // Endless scaling: spawn interval shrinks more aggressively past lv 30 and lv 50.
-        const lvCurve = 1.2 - player.level*0.035
+        const lvCurve = 0.85 - player.level*0.030
             - Math.max(0,player.level-30)*0.012
             - Math.max(0,player.level-50)*0.010;
         const interval=Math.max(0.10, lvCurve*iMult);
-        if (this.spawnTimer<=0){ this.spawnEnemy(); this.spawnTimer=interval; }
+        // If player is inside a town, slow down spawns dramatically (towns are safe-ish).
+        const inTown = isInsideAnyTown(player.x, player.y);
+        if (this.spawnTimer<=0){
+            if (!inTown) this.spawnEnemy();
+            this.spawnTimer=inTown ? 6.0 : interval;
+        }
         if (player.level>this.lastBossLevel&&player.level%5===0&&!this.bossSpawned) {
             this.spawnBoss(); this.bossSpawned=true;
             showFloatingText(player.x,player.y-90,`LEVEL ${player.level}: BOSS INCOMING!`,'#ff4400');
@@ -178,10 +184,19 @@ export const spawnManager = {
         let r=Math.random()*total; let chosen=wPool[0].type;
         for (const e of wPool){ r-=e.weight; if(r<=0){chosen=e.type;break;} }
 
-        const a=Math.random()*Math.PI*2;
-        const dist=Math.max(canvas.width,canvas.height)/2+120;
-        const x=player.x+Math.cos(a)*dist, y=player.y+Math.sin(a)*dist;
-        S.enemies.push(new Enemy(x,y,chosen));
+        // Find a spawn position outside any town's safe area. Try a few angles.
+        let spawnX = 0, spawnY = 0, found = false;
+        for (let attempt = 0; attempt < 6; attempt++) {
+            const a=Math.random()*Math.PI*2;
+            const dist=Math.max(canvas.width,canvas.height)/2+120;
+            const x=player.x+Math.cos(a)*dist, y=player.y+Math.sin(a)*dist;
+            if (!isInsideAnyTown(x, y, TILE_SIZE*2)) {
+                spawnX = x; spawnY = y; found = true;
+                break;
+            }
+        }
+        if (!found) return;
+        S.enemies.push(new Enemy(spawnX, spawnY, chosen));
     },
 
     spawnBoss() {

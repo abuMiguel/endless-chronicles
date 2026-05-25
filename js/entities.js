@@ -6,7 +6,7 @@
 'use strict';
 import { S, TILE_SIZE, TREE_COLL_R } from './state.js';
 import { getBiomeAtWorld } from './biomes.js';
-import { ARMOR_ITEMS, RING_ITEMS } from './world.js';
+import { ARMOR_ITEMS, RING_ITEMS, getBuildingWalls } from './world.js';
 import { getTreesNearPoint } from './chunks.js';
 import { questSystem } from './systems.js';
 import { achievements } from './achievements.js';
@@ -35,6 +35,30 @@ export function resolveTreeCollision(entity) {
         const dist=Math.hypot(entity.x-tree.x,entity.y-tree.y);
         const minD=TREE_COLL_R+entity.size/2+3;
         if (dist<minD&&dist>0){ const push=(minD-dist)+1; entity.x+=(entity.x-tree.x)/dist*push; entity.y+=(entity.y-tree.y)/dist*push; }
+    }
+}
+
+// Push entity out of any town-building wall AABB it overlaps.
+// Buildings have a door gap at the bottom-center — entities approach the
+// door naturally because walls form an open mouth there.
+export function resolveBuildingWallCollision(entity) {
+    const r = entity.size / 2;
+    for (const wall of getBuildingWalls()) {
+        const overL = (entity.x + r) - wall.x;
+        const overR = (wall.x + wall.w) - (entity.x - r);
+        const overT = (entity.y + r) - wall.y;
+        const overB = (wall.y + wall.h) - (entity.y - r);
+        if (overL > 0 && overR > 0 && overT > 0 && overB > 0) {
+            const mH = Math.min(overL, overR);
+            const mV = Math.min(overT, overB);
+            if (mH < mV) {
+                if (overL < overR) entity.x -= overL + 0.5;
+                else               entity.x += overR + 0.5;
+            } else {
+                if (overT < overB) entity.y -= overT + 0.5;
+                else               entity.y += overB + 0.5;
+            }
+        }
     }
 }
 
@@ -84,6 +108,7 @@ export class Player extends Entity {
         this.x+=this.vx*this.speed*dt;
         this.y+=this.vy*this.speed*dt;
         resolveTreeCollision(this);
+        resolveBuildingWallCollision(this);
         if (this.maxMana>0&&this.mana<this.maxMana){ this.mana+=this.manaRegen*dt; if(this.mana>this.maxMana)this.mana=this.maxMana; }
         camera.x=this.x-canvas.width/2;
         camera.y=this.y-canvas.height/2;
@@ -335,8 +360,11 @@ export class Enemy extends Entity {
         this.speed=type.speed*(0.8+Math.random()*0.4)*earlyMult*diffSpeedMult;
         this.baseSpeed=this.speed; this.xpValue=Math.floor(type.xp*mult); this.behavior=type.behavior;
         this.range=type.range||0; this.isBoss=type.isBoss||false;
-        this.lastAttackTime=0; this.aggroed=false;
-        this.aggroRange=player.level<6?200+player.level*42:Infinity;
+        this.lastAttackTime=0;
+        // Enemies are aggro by default — they're spawned just outside the camera
+        // intentionally to engage the player. No "wander forever" gap.
+        this.aggroed=true;
+        this.aggroRange=Infinity;
         this.attackState='approach'; this.attackStateTimer=0.4+Math.random()*0.8;
         this.strikeHit=false; this.meleeRange=this.size/2+26; this.stunTimer=0;
         this.knockbackVx=0; this.knockbackVy=0; this.angleOffset=Math.random()*Math.PI*2;
@@ -422,6 +450,7 @@ export class Enemy extends Entity {
             }
         }
         resolveTreeCollision(this);
+        resolveBuildingWallCollision(this);
     }
 
     _specialUpdate(dt, distP, angP) {
@@ -535,10 +564,10 @@ export class Enemy extends Entity {
                 }
             }
             else if (Math.random()<0.10) { S.items.push({ x:this.x,y:this.y,size:10,heal:Math.max(10,Math.floor(player.maxHp*0.15)),life:12,bob:Math.random()*Math.PI*2 }); }
-            if (Math.random()<0.12) {
-                const biome=getBiomeAtWorld(this.x,this.y);
-                const ammoType = biome.id==='desert'||biome.id==='ruins' ? 'rock' : 'arrow';
-                S.items.push({ x:this.x+10,y:this.y,size:8,ammoType,ammoCount:2+Math.floor(Math.random()*3),life:15,bob:Math.random()*Math.PI*2 });
+            if (Math.random()<0.12 && player.classType!=='wizard') {
+                // Knight always gets arrows, Beast always gets rocks.
+                const myType = player.classType==='knight' ? 'arrow' : 'rock';
+                S.items.push({ x:this.x+10,y:this.y,size:8,ammoType:myType,ammoCount:2+Math.floor(Math.random()*3),life:15,bob:Math.random()*Math.PI*2 });
             }
             createParticles(this.x,this.y,this.color,10);
             return true;
