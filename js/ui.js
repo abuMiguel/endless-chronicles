@@ -7,6 +7,7 @@ import { TOWNS, ROAD_CONNECTIONS, MonsterTypes } from './world.js';
 import { getBiomeAtWorld, Biomes } from './biomes.js';
 import { questSystem } from './systems.js';
 import { Classes, showFloatingText } from './entities.js';
+import { achievements, ACHIEVEMENT_DEFS, setUnlockCallback } from './achievements.js';
 
 // ── Minimap ──────────────────────────────────────────────────
 let _minimapCanvas, _minimapCtx, _minimapFrame = 0;
@@ -58,6 +59,7 @@ export function checkTownProximity() {
         const dist=Math.hypot(player.x-town.tileX*TILE_SIZE, player.y-town.tileY*TILE_SIZE);
         if (dist<TOWN_RADIUS) {
             questSystem.onVisitTown(town.id);
+            achievements.recordTownVisit(town.id);
             if (_lastTownId!==town.id) {
                 _lastTownId=town.id;
                 showTownFlash(town);
@@ -100,6 +102,7 @@ export function updateBiomeDisplay() {
     const player = S.player;
     const biome=getBiomeAtWorld(player.x,player.y);
     questSystem.onVisitBiome(biome.id);
+    achievements.recordBiomeVisit(biome.id);
     if (biome.id!==_lastBiomeId) {
         _lastBiomeId=biome.id;
         const el=document.getElementById('biome-name-display');
@@ -119,7 +122,16 @@ export function updateQuestTracker() {
     for (const q of questSystem.quests.slice(0,5)) {
         const div=document.createElement('div'); div.className='quest-item';
         const pct=Math.min(1,q.progress/q.required);
-        div.innerHTML=`<div class="quest-title-row${q.completed?' done':''}"><span>${q.title}</span><span>${q.completed?'&#10003;':q.progress+'/'+q.required}</span></div>${q.completed?'':`<div class="quest-prog-bar"><div class="quest-prog-fill" style="width:${Math.round(pct*100)}%"></div></div>`}`;
+        let statusHTML;
+        if (q.completed) {
+            statusHTML = `<span>&#10003;</span>`;
+        } else if (q.ready) {
+            statusHTML = `<span style="color:#FFD700">TURN IN</span>`;
+        } else {
+            statusHTML = `<span>${q.progress}/${q.required}</span>`;
+        }
+        const titleCls = q.completed ? ' done' : (q.ready ? ' ready' : '');
+        div.innerHTML=`<div class="quest-title-row${titleCls}"><span>${q.title}</span>${statusHTML}</div>${q.completed?'':`<div class="quest-prog-bar"><div class="quest-prog-fill" style="width:${Math.round(pct*100)}%"></div></div>`}${q.ready&&q.questGiver?`<div class="quest-giver-line">&rarr; ${q.questGiver}</div>`:''}`;
         el.appendChild(div);
     }
 }
@@ -205,4 +217,62 @@ export function drawClassPreviews() {
         else if(pc.dataset.class==='wizard') drawWizard(c);
         else drawBeast(c);
     });
+}
+
+
+// ── Achievement Toast Notification ───────────────────────────
+const _toastQueue = [];
+let _toastShowing = false;
+function _enqueueToast(a) {
+    _toastQueue.push(a);
+    if (!_toastShowing) _showNextToast();
+}
+function _showNextToast() {
+    if (_toastQueue.length === 0) { _toastShowing = false; return; }
+    _toastShowing = true;
+    const a = _toastQueue.shift();
+    const el = document.getElementById('achievement-toast');
+    if (!el) { _toastShowing = false; return; }
+    document.getElementById('achievement-toast-icon').textContent = a.icon || '🏆';
+    document.getElementById('achievement-toast-title').textContent = a.title;
+    document.getElementById('achievement-toast-desc').textContent = a.desc;
+    el.classList.remove('hidden');
+    requestAnimationFrame(() => el.classList.add('visible'));
+    setTimeout(() => {
+        el.classList.remove('visible');
+        setTimeout(() => { el.classList.add('hidden'); _showNextToast(); }, 600);
+    }, 3500);
+}
+
+// Wire achievement-unlock callback to the toast system on module load.
+setUnlockCallback(_enqueueToast);
+
+// ── Achievements Screen (populates ach-list) ─────────────────
+export function renderAchievementsScreen() {
+    const list = document.getElementById('ach-list'); if (!list) return;
+    list.innerHTML = '';
+    const total = ACHIEVEMENT_DEFS.length;
+    const unlocked = achievements.unlocked.length;
+    document.getElementById('ach-progress').textContent = `${unlocked} / ${total} Unlocked`;
+    for (const def of ACHIEVEMENT_DEFS) {
+        const got = achievements.isUnlocked(def.id);
+        const div = document.createElement('div');
+        div.className = `ach-row ${got ? 'unlocked' : 'locked'}`;
+        div.innerHTML = `
+            <div class="ach-icon">${got ? def.icon : '🔒'}</div>
+            <div class="ach-body">
+                <div class="ach-title">${got ? def.title : '???'}</div>
+                <div class="ach-desc">${def.desc}</div>
+            </div>
+        `;
+        list.appendChild(div);
+    }
+    // Persistent stats line at top
+    const stats = achievements.stats;
+    document.getElementById('ach-stats-line').innerHTML =
+        `<b>Total Kills:</b> ${stats.totalKills} &middot; ` +
+        `<b>Chests:</b> ${stats.chestsOpened} &middot; ` +
+        `<b>Quests:</b> ${stats.questsCompleted} &middot; ` +
+        `<b>Highest Lvl:</b> ${stats.maxLevel} &middot; ` +
+        `<b>Runs:</b> ${stats.runsStarted}`;
 }

@@ -10,6 +10,7 @@ import { TOWNS, CHEST_SPAWN_DATA, DEATH_QUOTES } from './world.js';
 import { renderTerrain, pruneDistantChunks, clearChunkCache } from './chunks.js';
 import { Player, Classes, NPC, ArcherTower } from './entities.js';
 import { spawnManager, questSystem, deleteSaveGame } from './systems.js';
+import { achievements } from './achievements.js';
 import {
     updateHUD, updateQuestTracker, renderMinimap, checkTownProximity,
     updateBiomeDisplay, resetBiomeDisplay, resetTownTracking, showNPCDialogue,
@@ -50,11 +51,13 @@ export function startGame(className, loadedData=null) {
     S.chests = CHEST_SPAWN_DATA.map(pos=>({x:pos.x,y:pos.y,opened:false,loot:pos.loot}));
     S.archerTowers.length=0; S.spawnedTowerKeys.clear();
     spawnManager.spawnTimer=0; spawnManager.lastBossLevel=0; spawnManager.bossSpawned=false;
+    spawnManager.snorflaxiaSpawned=false; spawnManager.voidAddTimer=0;
     S.ammoSpawnTimer=5;
     S.chunkPruneTimer=0;
     questSystem.init();
     resetBiomeDisplay(); resetTownTracking();
     clearChunkCache(); _biomeCache.clear();
+    achievements.recordRunStart();
     updateHUD(); updateQuestTracker();
     S.currentState=GameState.PLAYING;
     S.lastTime=performance.now();
@@ -95,6 +98,7 @@ export function triggerLevelUpScreen() {
 export function gameOver(killerName=null) {
     const player = S.player;
     S.currentState=GameState.GAME_OVER;
+    achievements.recordRunDeath();
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('mobile-controls').classList.add('hidden');
     document.getElementById('action-btn').classList.add('hidden');
@@ -112,13 +116,36 @@ export function gameOver(killerName=null) {
 export function returnToMenu() {
     S.currentState=GameState.MENU;
     cancelAnimationFrame(S.animationFrameId);
-    ['pause-menu','game-over-screen','hud','mobile-controls','action-btn','ranged-btn','minimap-wrap','town-flash'].forEach(id=>{
+    ['pause-menu','game-over-screen','victory-screen','hud','mobile-controls','action-btn','ranged-btn','minimap-wrap','town-flash'].forEach(id=>{
         document.getElementById(id)?.classList.add('hidden');
     });
     document.getElementById('start-screen').classList.remove('hidden');
     const { ctx, canvas } = S;
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.fillStyle='#0a0a0f'; ctx.fillRect(0,0,canvas.width,canvas.height);
+}
+
+// ── Victory (Snorflaxia defeated) ────────────────────────────
+const VICTORY_QUOTES = [
+    '"Two hundred years of waiting, and you ended it in an afternoon. Rude."',
+    '"The Realm of Grumbleshire is mildly grateful. Gerald the Frog is moderately so."',
+    '"Bert\'s cabbages remain unguarded, but the Void is sealed. Net positive."',
+    '"You did it. Now go home and rest. The bog can wait."',
+];
+export function triggerVictory() {
+    const player = S.player;
+    S.currentState = GameState.GAME_OVER;
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('mobile-controls').classList.add('hidden');
+    document.getElementById('action-btn').classList.add('hidden');
+    document.getElementById('ranged-btn').classList.add('hidden');
+    document.getElementById('minimap-wrap').classList.add('hidden');
+    document.getElementById('victory-level').innerText = player.level;
+    document.getElementById('victory-score').innerText = player.score;
+    document.getElementById('victory-kills').innerText = player.kills;
+    document.getElementById('victory-quote').innerText = VICTORY_QUOTES[Math.floor(Math.random()*VICTORY_QUOTES.length)];
+    document.getElementById('victory-screen').classList.remove('hidden');
+    deleteSaveGame();
 }
 
 // ── Main game loop ───────────────────────────────────────────
@@ -189,6 +216,7 @@ export function gameLoop(timestamp) {
                     else { const bonus=20+Math.floor(Math.random()*30); player.score+=bonus; showFloatingText(chest.x,chest.y-30,`+${bonus} Gold!`,'#FFD700'); }
                 }
                 questSystem.onOpenChest();
+                achievements.recordChestOpen();
                 updateQuestTracker();
             }
         }
@@ -207,14 +235,26 @@ export function gameLoop(timestamp) {
             }
         }
 
-        // F key NPC interaction
+        // F key NPC interaction (talk OR turn in quest if ready)
         if (S.keys['f']||S.keys['F']) {
             S.keys['f']=false; S.keys['F']=false;
             for (const n of S.npcs) {
                 if (Math.hypot(player.x-n.x,player.y-n.y)<70) {
-                    // Inline interact (avoid dynamic import latency)
-                    const line=n.dialogue[n.dialogueIndex%n.dialogue.length]; n.dialogueIndex++;
-                    showNPCDialogue(n.name, line, n.isMerchant);
+                    const readyQuest = questSystem.readyQuestForNPC(n.name);
+                    if (readyQuest) {
+                        // Turn in flow — complete the quest then show success dialog.
+                        const completedTitle = readyQuest.title;
+                        const completedReward = readyQuest.rewardText;
+                        questSystem.complete(readyQuest);
+                        showNPCDialogue(
+                            n.name,
+                            `"Quest complete: ${completedTitle}. Reward: ${completedReward}. Now go away, I have things to do."`,
+                            n.isMerchant
+                        );
+                    } else {
+                        const line=n.dialogue[n.dialogueIndex%n.dialogue.length]; n.dialogueIndex++;
+                        showNPCDialogue(n.name, line, n.isMerchant);
+                    }
                     break;
                 }
             }

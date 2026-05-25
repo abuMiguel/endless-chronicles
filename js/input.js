@@ -7,7 +7,7 @@ import {
     startGame, pauseGame, resumeGame, returnToMenu, gameLoop,
 } from './game.js';
 import { saveGame, checkSaveGame } from './systems.js';
-import { closeNPCDialogue } from './ui.js';
+import { closeNPCDialogue, renderAchievementsScreen } from './ui.js';
 
 export function initInput() {
     // ── Keyboard ──
@@ -68,6 +68,20 @@ export function initInput() {
 
     document.getElementById('show-lore-btn').addEventListener('click',()=>document.getElementById('lore-screen').classList.remove('hidden'));
     document.getElementById('close-lore-btn').addEventListener('click',()=>document.getElementById('lore-screen').classList.add('hidden'));
+
+    // Achievements screen
+    const openAchievements = () => {
+        renderAchievementsScreen();
+        document.getElementById('achievements-screen').classList.remove('hidden');
+    };
+    document.getElementById('show-achievements-btn')?.addEventListener('click', openAchievements);
+    document.getElementById('menu-achievements-btn')?.addEventListener('click', openAchievements);
+    document.getElementById('close-achievements-btn')?.addEventListener('click', () => {
+        document.getElementById('achievements-screen').classList.add('hidden');
+    });
+
+    // Victory screen restart
+    document.getElementById('victory-restart-btn')?.addEventListener('click', returnToMenu);
 
     // ── Level Up upgrades ──
     document.querySelectorAll('.upgrade-btn').forEach(btn=>{

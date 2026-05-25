@@ -9,8 +9,9 @@ import { getBiomeAtWorld } from './biomes.js';
 import { ARMOR_ITEMS, RING_ITEMS } from './world.js';
 import { getTreesNearPoint } from './chunks.js';
 import { questSystem } from './systems.js';
+import { achievements } from './achievements.js';
 import { updateHUD, updateQuestTracker } from './ui.js';
-import { triggerLevelUpScreen, gameOver } from './game.js';
+import { triggerLevelUpScreen, gameOver, triggerVictory } from './game.js';
 
 // ── Player class data ────────────────────────────────────────
 export const Classes = {
@@ -184,6 +185,7 @@ export class Player extends Entity {
         this.level++; this.xp-=this.xpToNext;
         this.xpToNext=Math.floor(this.xpToNext*1.75);
         this.maxHp+=10; this.hp=this.maxHp; this.damage+=2;
+        achievements.recordLevelUp(this.level);
         triggerLevelUpScreen();
     }
 
@@ -295,18 +297,26 @@ export class NPC {
         ctx.fillStyle='#333'; ctx.fillRect(dx-3,dy-10,2,2); ctx.fillRect(dx+1,dy-10,2,2);
         if (this.isMerchant) { ctx.fillStyle='#795548'; ctx.fillRect(dx-8,dy-16,16,5); ctx.fillRect(dx-5,dy-22,10,8); }
         else { ctx.fillStyle='#4e342e'; ctx.fillRect(dx-6,dy-15,12,5); }
+
+        // Quest-ready exclamation mark (pulsing gold "!")
+        const readyQuest = questSystem.readyQuestForNPC(this.name);
+        if (readyQuest) {
+            const pulse = 0.7 + Math.sin(Date.now()/180)*0.3;
+            ctx.save(); ctx.globalAlpha = pulse;
+            ctx.fillStyle='#FFD700'; ctx.font='bold 20px Courier New'; ctx.textAlign='center';
+            ctx.fillText('!', dx, dy-32);
+            ctx.textAlign='left'; ctx.restore();
+        }
+
         ctx.font='8px Courier New';
         const nw=ctx.measureText(this.name).width;
         ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(dx-nw/2-2,dy-28,nw+4,11);
         ctx.fillStyle=this.isMerchant?'#FFA000':'#90CAF9'; ctx.textAlign='center'; ctx.fillText(this.name,dx,dy-19); ctx.textAlign='left';
         if (player && Math.hypot(player.x-this.x,player.y-this.y)<70) {
-            ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='bold 10px Courier New'; ctx.textAlign='center'; ctx.fillText('[F] Talk',dx,dy-34); ctx.textAlign='left';
+            ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='bold 10px Courier New'; ctx.textAlign='center';
+            ctx.fillText(readyQuest ? '[F] Turn in!' : '[F] Talk', dx, dy-42);
+            ctx.textAlign='left';
         }
-    }
-    interact() {
-        const line=this.dialogue[this.dialogueIndex%this.dialogue.length]; this.dialogueIndex++;
-        // Imported lazily to avoid cycle
-        import('./ui.js').then(m => m.showNPCDialogue(this.name, line, this.isMerchant));
     }
 }
 
@@ -478,6 +488,26 @@ export class Enemy extends Entity {
                 }
                 break;
             }
+            case 'snorflaxia': {
+                // Phase 2: when below 50% HP, unleash spread volleys and boost speed.
+                this._volleyTimer = (this._volleyTimer || 0) - dt;
+                const phase2 = this.hp < this.maxHp * 0.5;
+                if (phase2 && !this._enragedAnnounced) {
+                    this._enragedAnnounced = true;
+                    this.speed = this.baseSpeed * 1.5;
+                    showFloatingText(this.x, this.y-50, '"Now I am SLIGHTLY MORE disappointed."', '#ff66ff');
+                }
+                if (this._volleyTimer <= 0 && distP < 600) {
+                    this._volleyTimer = phase2 ? 1.8 : 3.0;
+                    const shots = phase2 ? 7 : 5;
+                    const spread = phase2 ? Math.PI/2 : Math.PI/3;
+                    for (let i=0; i<shots; i++) {
+                        const off = (i/(shots-1) - 0.5) * spread;
+                        S.projectiles.push(new Projectile(this.x, this.y, angP + off, false, this.damage, 'fireball', this.name));
+                    }
+                }
+                break;
+            }
         }
     }
 
@@ -495,7 +525,15 @@ export class Enemy extends Entity {
         if (this.hp<=0) {
             player.gainXp(this.xpValue); player.kills++;
             questSystem.onKill(this.typeId);
-            if (this.isBoss){ showFloatingText(this.x,this.y-20,'BOSS DEFEATED!','gold'); player.heal(player.maxHp*0.5); }
+            achievements.recordKill(this.typeId, !!this.isBoss);
+            if (this.isBoss){
+                showFloatingText(this.x,this.y-20,'BOSS DEFEATED!','gold');
+                player.heal(player.maxHp*0.5);
+                if (this.typeId === 'snorflaxia') {
+                    // Endgame victory!
+                    triggerVictory();
+                }
+            }
             else if (Math.random()<0.10) { S.items.push({ x:this.x,y:this.y,size:10,heal:Math.max(10,Math.floor(player.maxHp*0.15)),life:12,bob:Math.random()*Math.PI*2 }); }
             if (Math.random()<0.12) {
                 const biome=getBiomeAtWorld(this.x,this.y);

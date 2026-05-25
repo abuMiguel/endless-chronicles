@@ -327,3 +327,83 @@ canvas#gameCanvas {
     100% { transform: scale(1); }
 }
 .animate-pulse { animation: pulse 1s infinite; }
+
+
+/* ── QUEST: TURN-IN INDICATOR ─────────────────────────────── */
+.quest-title-row.ready {
+    color: #FFD700;
+    animation: pulse-ready 1.4s infinite;
+}
+@keyframes pulse-ready {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+}
+.quest-giver-line {
+    font-size: 0.62rem;
+    color: #FFD700;
+    opacity: 0.85;
+    padding-left: 6px;
+    font-style: italic;
+}
+
+/* ── ACHIEVEMENTS SCREEN ──────────────────────────────────── */
+.ach-row {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid #2a2a35;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    background: rgba(255,255,255,0.02);
+    transition: transform 0.12s, border-color 0.12s;
+}
+.ach-row:hover { transform: translateX(2px); }
+.ach-row.unlocked {
+    border-color: #FFD700;
+    background: rgba(255,215,0,0.06);
+}
+.ach-row.locked { opacity: 0.55; filter: grayscale(0.6); }
+.ach-icon {
+    font-size: 1.8rem;
+    width: 38px; height: 38px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.ach-body { flex: 1; }
+.ach-title { font-weight: bold; color: #fff; font-size: 0.95rem; margin-bottom: 2px; }
+.ach-row.unlocked .ach-title { color: #FFD700; }
+.ach-desc  { font-size: 0.75rem; color: #aaa; }
+
+/* ── ACHIEVEMENT TOAST ────────────────────────────────────── */
+#achievement-toast {
+    position: absolute;
+    top: 80px;
+    right: 24px;
+    z-index: 200;
+    background: linear-gradient(135deg, rgba(20,15,5,0.97), rgba(45,30,5,0.97));
+    border: 2px solid #FFD700;
+    border-radius: 10px;
+    padding: 12px 18px;
+    box-shadow: 0 6px 26px rgba(0,0,0,0.7), 0 0 22px rgba(255,215,0,0.32);
+    transform: translateX(120%);
+    opacity: 0;
+    transition: transform 0.45s cubic-bezier(0.2,0.9,0.3,1.2), opacity 0.45s ease;
+    max-width: 320px;
+    pointer-events: none;
+}
+#achievement-toast.visible {
+    transform: translateX(0);
+    opacity: 1;
+}
+.ach-toast-inner { display: flex; gap: 12px; align-items: center; }
+.ach-toast-icon  { font-size: 2.2rem; line-height: 1; }
+.ach-toast-label {
+    font-size: 0.65rem;
+    color: #FFD700;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+    opacity: 0.9;
+}
+.ach-toast-title { font-weight: bold; color: #fff; font-size: 1rem; }
+.ach-toast-desc  { font-size: 0.72rem; color: #ccc; margin-top: 2px; }

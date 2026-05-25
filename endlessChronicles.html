@@ -152,6 +152,7 @@
             <div class="mt-3 flex justify-center gap-4">
                 <button id="show-bestiary-btn" class="text-sm text-gray-400 hover:text-white underline">Bestiary & Manual</button>
                 <button id="show-lore-btn" class="text-sm text-gray-400 hover:text-white underline">World Lore</button>
+                <button id="show-achievements-btn" class="text-sm text-gray-400 hover:text-white underline">Achievements</button>
             </div>
         </div>
     </div>
@@ -180,6 +181,7 @@
                 <button id="resume-btn" class="btn">Resume</button>
                 <button id="save-btn" class="btn border-blue-500 text-blue-400">Save Progress</button>
                 <button id="menu-bestiary-btn" class="btn">Manual &amp; Bestiary</button>
+                <button id="menu-achievements-btn" class="btn">Achievements</button>
                 <button id="quit-btn" class="btn btn-danger">Quit to Title</button>
             </div>
             <div id="save-msg" class="mt-4 text-sm text-green-400 h-4"></div>
@@ -250,6 +252,45 @@
                 <p><strong class="text-red-400">The Endgame:</strong> Deep in The Void lies the Citadel of Mediocre Doom. Snorflaxia awaits. She has been waiting for quite some time and is, as her name suggests, quite disappointed. Her minions are numerous and very unpleasant. Good luck. You'll need it.</p>
             </div>
             <div class="mt-4"><button id="close-lore-btn" class="btn">Understood (Mostly)</button></div>
+        </div>
+    </div>
+
+    <!-- Achievements Overlay -->
+    <div id="achievements-screen" class="overlay hidden">
+        <div class="panel" style="max-width:680px;width:92%">
+            <h2 class="text-3xl font-bold mb-1 text-yellow-400 border-b border-gray-600 pb-2">Achievements</h2>
+            <p class="text-xs text-gray-500 mb-2" id="ach-progress">0 / 0 Unlocked</p>
+            <p class="text-xs text-gray-400 mb-3" id="ach-stats-line"></p>
+            <div id="ach-list" style="max-height:60vh;overflow-y:auto;text-align:left"></div>
+            <div class="mt-4"><button id="close-achievements-btn" class="btn">Close</button></div>
+        </div>
+    </div>
+
+    <!-- Victory Overlay (Snorflaxia defeated) -->
+    <div id="victory-screen" class="overlay hidden">
+        <div class="panel" style="max-width:560px;border-color:#FFD700">
+            <h1 class="text-5xl font-bold mb-2" style="color:#FFD700;text-shadow:0 0 14px rgba(255,215,0,0.45)">VICTORY!</h1>
+            <p class="text-xl mb-3 text-purple-300">Grand Witch Snorflaxia falls.</p>
+            <p class="text-sm text-gray-400 italic mb-4">"Two hundred years of waiting, and you ended it in an afternoon."</p>
+            <div class="bg-gray-800 p-4 rounded mb-6 text-left text-sm">
+                <p>Level Reached: <span id="victory-level" class="font-bold text-white"></span></p>
+                <p>Score: <span id="victory-score" class="font-bold text-yellow-400"></span></p>
+                <p>Enemies Slain: <span id="victory-kills" class="font-bold text-white"></span></p>
+                <p class="mt-2 text-purple-300 italic" id="victory-quote"></p>
+            </div>
+            <button id="victory-restart-btn" class="btn text-xl px-8 py-3" style="border-color:#FFD700;color:#FFD700">Return to Title</button>
+        </div>
+    </div>
+
+    <!-- Achievement Toast Notification -->
+    <div id="achievement-toast" class="hidden">
+        <div class="ach-toast-inner">
+            <div id="achievement-toast-icon" class="ach-toast-icon">🏆</div>
+            <div class="ach-toast-body">
+                <div class="ach-toast-label">ACHIEVEMENT UNLOCKED</div>
+                <div id="achievement-toast-title" class="ach-toast-title"></div>
+                <div id="achievement-toast-desc" class="ach-toast-desc"></div>
+            </div>
         </div>
     </div>
 
