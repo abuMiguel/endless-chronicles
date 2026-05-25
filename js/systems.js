@@ -108,22 +108,32 @@ export const spawnManager = {
         this.spawnTimer-=dt;
         const diff=document.getElementById('difficulty-select')?.value||'normal';
         const iMult=diff==='easy'?2.1:(diff==='hard'?0.75:1.0);
-        // Faster early-game spawns so the world feels alive immediately.
-        // Endless scaling: spawn interval shrinks more aggressively past lv 30 and lv 50.
-        const lvCurve = 0.85 - player.level*0.030
-            - Math.max(0,player.level-30)*0.012
-            - Math.max(0,player.level-50)*0.010;
-        const interval=Math.max(0.10, lvCurve*iMult);
+        // Gentle early-game ramp. Spawn interval shrinks gradually:
+        // lv1≈2.44s, lv5≈2.20s, lv10≈1.90s, lv20≈1.30s, lv30≈0.70s,
+        // lv40+ clamped at 0.18s. Difficulty late-game comes from stronger
+        // mobs (HP/dmg scaling + new monster types via minLevel) rather than
+        // just sheer quantity.
+        const lvCurve = 2.5 - player.level*0.06
+            - Math.max(0, player.level-30)*0.020
+            - Math.max(0, player.level-50)*0.012;
+        const interval=Math.max(0.18, lvCurve*iMult);
         // If player is inside a town, slow down spawns dramatically (towns are safe-ish).
         const inTown = isInsideAnyTown(player.x, player.y);
         if (this.spawnTimer<=0){
             if (!inTown) this.spawnEnemy();
             this.spawnTimer=inTown ? 6.0 : interval;
         }
-        if (player.level>this.lastBossLevel&&player.level%5===0&&!this.bossSpawned) {
+        // Boss waves every 5 levels — but the very first wave starts at lv7
+        // (was lv5) to give new players room to breathe.
+        if (player.level >= 7 &&
+            player.level > this.lastBossLevel &&
+            (player.level - 7) % 5 === 0 &&
+            !this.bossSpawned) {
             this.spawnBoss(); this.bossSpawned=true;
             showFloatingText(player.x,player.y-90,`LEVEL ${player.level}: BOSS INCOMING!`,'#ff4400');
-        } else if (player.level>this.lastBossLevel&&player.level%5!==0){ this.bossSpawned=false; this.lastBossLevel=player.level; }
+        } else if (player.level>this.lastBossLevel) {
+            this.bossSpawned=false; this.lastBossLevel=player.level;
+        }
 
         // ── Void endgame: Snorflaxia spawns when player reaches Void & lv>=20
         const biome = getBiomeAtWorld(player.x, player.y);
@@ -158,13 +168,15 @@ export const spawnManager = {
         const player = S.player;
         const { canvas } = S;
         const diff=document.getElementById('difficulty-select')?.value||'normal';
-        // Endless cap: increase max enemy count for high level players
-        const endlessBonus = Math.max(0, player.level-25) * 1.5;
+        // Endless cap: increase max enemy count for high level players past lv25.
+        const endlessBonus = Math.max(0, player.level-25) * 1.2;
+        // Gentle cap at low levels so early game isn't a swarm.
+        // Normal: lv1=2, lv5=6, lv10=10, lv20=18, lv30=26+ (endless).
         const maxE=diff==='easy'
-            ? Math.min(20,3+Math.floor(player.level*0.8))
+            ? Math.min(18, 2 + Math.floor(player.level*0.4))
             : (diff==='hard'
-                ? Math.min(90, 6+player.level*3 + endlessBonus)
-                : Math.min(65, 4+player.level*2 + endlessBonus));
+                ? Math.min(90, 3 + Math.floor(player.level*1.4) + endlessBonus)
+                : Math.min(65, 2 + Math.floor(player.level*0.8) + endlessBonus));
         if (S.enemies.length>=maxE) return;
 
         const biome=getBiomeAtWorld(player.x,player.y);

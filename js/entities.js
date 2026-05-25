@@ -535,7 +535,11 @@ export class Enemy extends Entity {
         super(x,y,type.size,type.color);
         const player = S.player;
         this.typeId=type.id; this.name=type.name;
-        const mult=1+Math.max(0,player.level-2)*0.10;
+        // Per-level HP/dmg scaling: linear early, slightly steeper past lv15
+        // to keep individual mobs threatening when overall spawn count is low.
+        const mult=1
+            + Math.max(0, player.level-2) * 0.10
+            + Math.max(0, player.level-15) * 0.04;
         const diffMult = (() => { const d=document.getElementById('difficulty-select')?.value||'normal'; return d==='easy'?0.75:d==='hard'?1.3:1.0; })();
         this.maxHp=Math.floor(type.hp*mult); this.hp=this.maxHp;
         this.damage=Math.floor(type.dmg*mult*diffMult);
